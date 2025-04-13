@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>VPN 中繼伺服器管理介面</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <style>
+    .ping { position: relative; }
+    .ping::before {
+      content: ''; position: absolute; top: 50%; left: 0;
+      width: 10px; height: 10px; border-radius: 9999px;
+      transform: translateY(-50%);
+    }
+    .ping-green::before {
+      background-color: lightgreen;
+      animation: pingGreen 1.5s infinite;
+    }
+    .ping-yellow::before {
+      background-color: rgb(186, 167, 0);
+      animation: pingYellow 1.5s infinite;
+    }
+    .ping-red::before {
+      background-color: rgba(255, 0, 0, 0.565);
+      animation: pingRed 1.5s infinite;
+    }
+    @keyframes pingGreen {
+      0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(74, 222, 128, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+    }
+    @keyframes pingRed {
+      0% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(248, 113, 113, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0); }
+    }
+    @keyframes pingYellow {
+      0% { box-shadow: 0 0 0 0 rgb(255, 217, 0); }
+      70% { box-shadow: 0 0 0 10px rgba(255, 217, 0, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(255, 217, 0, 0); }
+    }
+    .loading-shine {
+      position: relative;
+      background-color: #4b5563;
+      height: 80px;
+      border-radius: 0.75rem;
+      overflow: hidden;
+    }
+    .loading-shine::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -50%;
+      height: 100%;
+      width: 50%;
+      background: linear-gradient(to right, transparent, rgba(255,255,255,0.2), transparent);
+      animation: loadingShine 1.5s infinite;
+    }
+    @keyframes loadingShine {
+      0% { left: -50%; }
+      100% { left: 100%; }
+    }
+    .fade-expand-enter-active,
+    .fade-expand-leave-active {
+    transition: all 0.3s ease;
+    overflow: hidden;
+    }
+
+    .fade-expand-enter-from,
+    .fade-expand-leave-to {
+    opacity: 0;
+    max-height: 0;
+    }
+
+    .fade-expand-enter-to,
+    .fade-expand-leave-from {
+    opacity: 1;
+    max-height: 500px; /* 視情況調整最大高度 */
+    }
+    @keyframes borderPulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(34,197,94,0.4); /* green-500 */
+    }
+    50% {
+        box-shadow: 0 0 10px 2px rgba(34,197,94,0.7);
+    }
+    }
+    .border-pulse {
+    animation: borderPulse 1.5s infinite;
+    }
+  </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-6">
+  <div id="app" class="max-w-6xl mx-auto">
+    <h1 class="text-3xl font-bold text-center mb-8">VPN 中繼伺服器管理介面</h1>
+
+    <div @dragover.prevent @drop.prevent="handleDrop" class="border-2 border-dashed border-gray-600 rounded-xl p-8 text-center text-gray-400 mb-8 cursor-pointer">
+      拖曳 VPN Config 檔案至此處以上傳（支援 .conf / .ovpn）
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+      <section v-for="type in ['wireguard', 'openvpn']" :key="type" class="bg-gray-800 rounded-2xl shadow-md p-6">
+        <h2 class="text-2xl font-semibold mb-4">{{ type === 'wireguard' ? 'WireGuard' : 'OpenVPN' }} 出口 Config</h2>
+
+        <div v-if="loading[type]" class="space-y-4">
+          <div v-for="i in 2" :key="i" class="loading-shine"></div>
+        </div>
+
+        <div v-else class="space-y-4">
+            <div
+            v-for="cfg in configList[type]"
+            :key="cfg.name"
+            :class="[
+              'bg-gray-700 rounded-xl px-4 py-2 transition-all duration-300',
+              'border-2',
+              cfg.enabled ? 'border-green-500' : cfg.details['auth']=='require' ? 'border-yellow-500' : 'border-red-500',
+              'space-y-2'
+            ]"
+          >
+            <div class="flex justify-between items-center cursor-pointer" @click="toggleExpand(cfg.name, type)">
+              <div class="flex items-center space-x-2">
+                <span :class="['ping w-2.5 h-2.5 rounded-full', cfg.details?.['auth-user-pass']==true ? 'ping-yellow' : cfg.enabled ? 'ping-green' : 'ping-red']"></span>
+                <div><p class="text-lg font-medium">{{ cfg.name }}</p></div>
+              </div>
+              <div class="space-x-2">
+                <!--啟動按鈕-->
+                <button @click.stop="handleEnable(cfg, type)" :class="[
+                cfg.enabled ? 'text-red-500' : 
+                ((cfg.details?.['auth']=='require' || cfg.details?.['auth']=='wrong') && !(authInput[cfg.name]?.username && authInput[cfg.name]?.password)) 
+                  ? 'text-yellow-400' 
+                  : 'text-green-400',
+                'bg-white bg-opacity-10 px-3 py-1 rounded hover:bg-opacity-20'
+              ]">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="size-4">
+                        <path fill-rule="evenodd" d="M8 1a.75.75 0 0 1 .75.75v6.5a.75.75 0 0 1-1.5 0v-6.5A.75.75 0 0 1 8 1ZM4.11 3.05a.75.75 0 0 1 0 1.06 5.5 5.5 0 1 0 7.78 0 .75.75 0 0 1 1.06-1.06 7 7 0 1 1-9.9 0 .75.75 0 0 1 1.06 0Z" clip-rule="evenodd" />
+                    </svg>
+                </button>
+                <!--刪除按鈕-->
+                <button @click.stop="deleteConfig(cfg.name, type)" class="text-red-400 bg-white bg-opacity-10 px-3 py-1 rounded hover:bg-opacity-20">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="size-4">
+                        <path fill-rule="evenodd" d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35l.815-8.15h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5a.75.75 0 0 1 .786-.711Z" clip-rule="evenodd" />
+                      </svg>                      
+                </button>
+              </div>
+            </div>
+            <!--展開details-->
+            <transition name="fade-expand">
+                <div v-show="expanded[type].has(cfg.name)" class="mt-4 text-sm text-gray-300 space-y-1 border-t border-gray-600 pt-2">
+                <div v-if="cfg.details">
+                    <!--輸入帳號密碼-->
+                    <div v-if="cfg.details['auth']=='require'" class="mb-4 bg-gray-800 p-4 rounded-md border border-yellow-500 space-y-2">
+                    <p class="text-yellow-400 font-semibold">此連線需要帳號密碼</p>
+                    <input v-model="authInput[cfg.name].username" placeholder="帳號" class="w-full bg-gray-700 text-white px-3 py-1 rounded border border-gray-600" />
+                    <input v-model="authInput[cfg.name].password" placeholder="密碼" type="password" class="w-full bg-gray-700 text-white px-3 py-1 rounded border border-gray-600" />
+                    </div>
+                    <div v-if="cfg.details['auth']=='wrong'" class="mb-4 bg-gray-800 p-4 rounded-md border border-red-500 space-y-2">
+                        <p class="text-red-400 font-semibold">帳號或密碼錯誤</p>
+                        <input v-model="authInput[cfg.name].username" placeholder="帳號" class="w-full bg-gray-700 text-white px-3 py-1 rounded border border-gray-600" />
+                        <input v-model="authInput[cfg.name].password" placeholder="密碼" type="password" class="w-full bg-gray-700 text-white px-3 py-1 rounded border border-gray-600" />
+                    </div>
+                    <div v-if="cfg.details['auth']=='correct'" class="mb-4 bg-gray-800 p-4 rounded-md border border-green-500 space-y-2">
+                        <p class="text-green-400 font-semibold">憑證有效</p>  
+                    </div>
+                    <div v-for="(section, sectionName) in cfg.details" :key="sectionName" class="mb-2">
+                    <template v-if="typeof section === 'object' && !Array.isArray(section)">
+                        <p class="font-semibold text-white">{{ sectionName }}</p>
+                        <div class="pl-4 space-y-1">
+                        <div v-for="(val, key) in section" :key="key">
+                            <strong class="capitalize">{{ key }}:</strong> {{ val }}
+                        </div>
+                        </div>
+                    </template>
+                    <template v-else-if="sectionName !== 'auth-user-pass'">
+                        <strong class="capitalize">{{ sectionName }}:</strong> {{ section }}
+                    </template>
+                    </div>
+                </div>
+                <div v-else class="text-gray-500">（無詳細資料）</div>
+                </div>
+            </transition>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="bg-gray-800 rounded-2xl shadow-md p-6">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-2xl font-semibold">中繼 VPN Client 設定下載</h2>
+        <button @click="addClient" class="text-green-400 bg-white bg-opacity-10 px-3 py-1 rounded hover:bg-opacity-20">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              
+        </button>
+      </div>
+      <div v-if="loading.client" class="space-y-4">
+        <div v-for="i in 2" :key="i" class="loading-shine"></div>
+      </div>
+      <div v-else class="space-y-4">
+        <div v-for="client in clientList" :key="client.name" class="bg-gray-700 rounded-xl p-4 flex justify-between items-center">
+          <div>
+            <p class="text-lg font-medium">{{ client.name }}</p>
+            <p class="text-gray-400 text-sm">建立於 {{ client.createdAt }}</p>
+          </div>
+          <div class="space-x-2">
+            <a :href="`/api/client/config/${client.name}`" class="text-green-400 bg-white bg-opacity-10 px-3 py-1 rounded hover:bg-opacity-20">下載 config</a>
+            <button @click="deleteClient(client.name)" class="text-red-400 bg-white bg-opacity-10 px-3 py-1 rounded hover:bg-opacity-20">刪除</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+    const app = Vue.createApp({
+      data() {
+        return {
+          loading: { wireguard: true, openvpn: true, client: true },
+          configList: { wireguard: [], openvpn: [] },
+          clientList: [],
+          expanded: { wireguard: new Set(), openvpn: new Set() },
+          authInput: {}
+        }
+      },
+      methods: {
+        async fetchAll() {
+          this.loading.wireguard = true;
+          this.loading.openvpn = true;
+          this.loading.client = true;
+          const [wgRes, ovpnRes, clientRes] = await Promise.all([
+            fetch('/api/config/list?type=wireguard').then(r => r.json()),
+            fetch('/api/config/list?type=openvpn').then(r => r.json()),
+            fetch('/api/client/list').then(r => r.json())
+          ]);
+          this.configList.wireguard = wgRes;
+          this.configList.openvpn = ovpnRes;
+          this.clientList = clientRes;
+          this.loading.wireguard = false;
+          this.loading.openvpn = false;
+          this.loading.client = false;
+          this.expanded.wireguard.clear();
+          this.expanded.openvpn.clear();
+          this.authInput = {};
+          for (const t of ['wireguard', 'openvpn']) {
+            for (const cfg of this.configList[t]) {
+              this.authInput[cfg.name] = { username: '', password: '' }
+            }
+          }
+        },
+        toggleExpand(name, type) {
+          const set = this.expanded[type];
+          set.has(name) ? set.delete(name) : set.add(name);
+        },
+        async handleEnable(cfg, type) {
+            if (cfg.enabled) {
+                this.toggleConfig(cfg, type);
+                return;
+            }
+
+        // 如果需要帳號密碼但還沒填寫 ➜ 展開表單但不送出
+            if (cfg.details?.['auth']=='require' || cfg.details?.['auth']=='wrong') {
+                this.expanded[type].add(cfg.name);
+                const { username, password } = this.authInput[cfg.name];
+                if (!username || !password) return; // 尚未填寫則不送出
+                // 已填寫 ➜ 先送帳密再啟用
+                await fetch("/api/config/auth", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: cfg.name, username, password })
+                });
+            }
+        this.toggleConfig(cfg, type); // 呼叫啟用 API
+        },
+        async handleDrop(e) {
+          const file = e.dataTransfer.files[0];
+          const formData = new FormData();
+          formData.append("file", file);
+          formData.append("type", file.name.endsWith(".ovpn") ? "openvpn" : "wireguard");
+          await fetch("/api/config/upload", { method: "POST", body: formData });
+          this.fetchAll();
+        },
+        async toggleConfig(cfg, type) {
+          await fetch("/api/config/enable", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: cfg.name, type, enabled: !cfg.enabled })
+          });
+          this.fetchAll();
+        },
+        async deleteConfig(name, type) {
+          await fetch("/api/config", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, type })
+          });
+          this.fetchAll();
+        },
+        async addClient() {
+          await fetch("/api/client", { method: "POST" });
+          this.fetchAll();
+        },
+        async deleteClient(name) {
+          await fetch(`/api/client/${name}`, { method: "DELETE" });
+          this.fetchAll();
+        },
+        async submitAuth(name) {
+          const { username, password } = this.authInput[name];
+          if (!username || !password) return alert("請輸入帳號密碼");
+          await fetch("/api/config/auth", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, username, password })
+          });
+          alert("已送出帳密");
+        }
+      },
+      mounted() {
+        this.fetchAll();
+      }
+    })
+    app.config.devtools =true;
+    app.mount("#app");
+    
+  </script>
+</body>
+</html>
