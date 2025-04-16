@@ -8,9 +8,13 @@ COPY ./requirements.txt /app/requirements.txt
 
 RUN apt update && \
     apt install -y \
+    iproute2 \
     wireguard \
     procps \
     openvpn
+
+RUN echo -e '#!/bin/sh\nexit 0' > /usr/bin/resolvconf && \
+    chmod +x /usr/bin/resolvconf
 
 WORKDIR /app
 
