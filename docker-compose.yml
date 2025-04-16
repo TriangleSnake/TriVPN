@@ -5,6 +5,9 @@ services:
       - "8000:8000"
     volumes:
       - ./app:/app:ro
+      - ./wireguard:/etc/wireguard
+      - ./openvpn:/etc/openvpn/config
+      - ./clients:/etc/clients
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
