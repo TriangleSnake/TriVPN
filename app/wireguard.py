@@ -3,7 +3,7 @@ import subprocess
 from config import WG_DIR
 def get_activate_list()->list:
     activate_config = []
-    data = os.popen("wg show").read()[1:].split("\n")
+    data = os.popen("wg show").read().split("\n\n")
     for i in data:
         if i.startswith("interface"):
             config = i.split("\n")[0].removeprefix("interface: ")
