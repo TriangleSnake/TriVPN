@@ -111,5 +111,8 @@ def remove(config:str):
     os.remove(f"{OVPN_DIR}/{config}")
 
 def check_auth(config:str):
-    ret = subprocess.run(["openvpn","--config",config],capture_output=True, text=True, timeout=3).stdout
+    try:
+        ret = subprocess.run(["openvpn","--config",config],capture_output=True, text=True, timeout=3).stdout
+    except subprocess.TimeoutExpired as e:
+        ret = e.stdout
     return  "AUTH_FAILED" not in ret

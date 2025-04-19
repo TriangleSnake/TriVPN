@@ -13,8 +13,7 @@ RUN apt update && \
     procps \
     openvpn
 
-RUN echo -e '#!/bin/sh\nexit 0' > /usr/bin/resolvconf && \
-    chmod +x /usr/bin/resolvconf
+RUN apt install -y resolvconf || true
 
 WORKDIR /app
 
