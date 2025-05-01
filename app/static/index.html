@@ -296,7 +296,13 @@
           this.fetchAll();
         },
         async addClient() {
-          await fetch("/api/client/create", { method: "POST" });
+          const name = prompt("請輸入這個 Client 的名稱（只能使用英數字）");
+          const formData = new FormData();
+          formData.append("name", name);
+          await fetch("/api/client/create", { 
+            method: "POST",
+            data: formData 
+          });
           this.fetchAll();
         },
         async deleteClient(name) {
