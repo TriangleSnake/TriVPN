@@ -296,7 +296,7 @@
           this.fetchAll();
         },
         async addClient() {
-          await fetch("/api/client", { method: "POST" });
+          await fetch("/api/client/create", { method: "POST" });
           this.fetchAll();
         },
         async deleteClient(name) {

@@ -3,6 +3,8 @@ WG_DIR = "/etc/wireguard"
 OVPN_DIR = "/etc/openvpn/config"
 CLIENT_DIR = "/etc/clients"
 CONFIG_TYPE = ["wireguard","openvpn"]
+CONFIG_EXTENSION = ["conf","ovpn"]
+DB_PATH = "/etc/clients.db"
 
 #IP setting
 SRV_INT_IP = "10.11.12.1/24"

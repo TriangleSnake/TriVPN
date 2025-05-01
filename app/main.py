@@ -33,11 +33,11 @@ class ConfigDelete(BaseModel):
     type: str
 
 def sanitize_filename(filename: str) -> str:
-    basename = os.path.basename(filename)  # 移除路徑，例如 ../a.conf -> a.conf
-    name_only = basename.rsplit(".", 1)[0]  # 移除副檔名
-
+    basename,extension = filename.rsplit(".", 1)  # 移除副檔名
+    if extension not in CONFIG_EXTENSION:
+        raise HTTPException(status_code=400, detail="Invalid file extension")
     pattern = re.compile(r'^[a-zA-Z0-9_]+$')  # 加入數字支援
-    if not pattern.fullmatch(name_only):
+    if not pattern.fullmatch(basename):
         raise HTTPException(status_code=400, detail="Filename can only contain letters, numbers and underscores (a-zA-Z0-9_)")
     
 
@@ -111,9 +111,12 @@ async def list_clients():
     return clients.get_list()
 
 
-@app.post("/api/client")
+@app.post("/api/client/create")
 async def create_client(name: str = Form(None)):
-    clients.create_client(name)
+    pattern = re.compile(r'^[a-zA-Z0-9]+$')
+    if not pattern.fullmatch(name):
+        raise HTTPException(status_code=400, detail="Client name can only contain letters and numbers (a-zA-Z0-9_)")
+    clients.create(name)
 
 
 @app.get("/api/client/config/{name}")
